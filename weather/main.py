@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 
+from datetime import datetime, timedelta
 from matplotlib import pyplot
+from numpy import array
 from os import getcwd, listdir
 from pandas import concat, read_csv, to_datetime
 from sklearn.ensemble import RandomForestRegressor
@@ -12,6 +14,10 @@ from sklearn.preprocessing import PolynomialFeatures, StandardScaler
 
 
 # Utilities
+
+
+def get_day_from_date(date: datetime):
+    return array(date.timetuple().tm_yday).reshape(-1, 1)
 
 
 def load_df(station_id: int):
@@ -62,6 +68,21 @@ def measure_performance(model, ds, y_pred):
     print(f"• RMSE: +/-{mean_squared_error(y_test, y_pred, squared=False)}")
     print()
 
+    predict_by_date(model, datetime.now())
+
+
+def predict_by_date(model, date):
+    today = get_day_from_date(date)
+    in_five_days = get_day_from_date(date + timedelta(days=5))
+    in_a_week = get_day_from_date(date + timedelta(weeks=1))
+    in_a_month = get_day_from_date(date + timedelta(weeks=4))
+
+    print(f"• Today: {model.predict(today)[0]}")
+    print(f"• In Five Days: {model.predict(in_five_days)[0]}")
+    print(f"• In a Week: {model.predict(in_a_week)[0]}")
+    print(f"• In a Month: {model.predict(in_a_month)[0]}")
+    print()
+
 
 def plot_ds(position, param, dataset, y_pred):
     X_train, X_test, y_train, y_test = dataset
@@ -79,6 +100,11 @@ def plot_ds(position, param, dataset, y_pred):
 
     # Add the predictions
     position.scatter(X_test, y_pred, alpha=0.4, label="Predictions")
+
+    # Add dots for today
+    today = get_day_from_date(datetime.now())
+    position.scatter(today, y_test[today], alpha=0.8, s=128, label="Today (y_test)")
+    position.scatter(today, y_pred[today], alpha=0.8, s=128, label="Today (y_pred)")
 
     position.set(
         xlabel="Days in the Year",
