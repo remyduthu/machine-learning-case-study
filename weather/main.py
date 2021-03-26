@@ -5,10 +5,12 @@ from matplotlib import pyplot
 from os import getcwd, listdir
 from pandas import concat, read_csv, to_datetime
 from sklearn.ensemble import RandomForestRegressor
-from sklearn.linear_model import LinearRegression
-from sklearn.model_selection import train_test_split
+from sklearn.linear_model import ElasticNet, LinearRegression
+from sklearn.model_selection import GridSearchCV, train_test_split
+from sklearn.neural_network import MLPRegressor
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import PolynomialFeatures, StandardScaler
+from sklearn.svm import SVR
 
 
 # Utilities
@@ -33,24 +35,24 @@ def load_df(station_id: int):
     df.query(f"numer_sta == {station_id}", inplace=True)
 
     # Convert the dates into Pandas Timestamps
-    df["date"] = to_datetime(df["date"], format="%Y%m%d%H%M%S").astype(int) / 10 ** 9
+    df.date = to_datetime(df.date, format="%Y%m%d%H%M%S")
+
+    # Add a column to compare values from year to year
+    df["days"] = df.date.dt.day_of_year
 
     return df
 
 
 def load_ds(df, param: str):
-    # Keep only the date and the parameter columns
-    df = df[["date", param]]
+    # Keep only required columns
+    df = df[["date", "days", param]]
 
     # Drop rows with NaN values
     df = df.dropna()
 
-    # Convert into a Numpy array
-    ds = df.to_numpy()
-
     # Reshape X as we work on a single feature
-    X = ds[:, 0].reshape(-1, 1)
-    y = ds[:, 1]
+    X = df.days.to_numpy().reshape(-1, 1)
+    y = df[param].to_numpy()
 
     return train_test_split(X, y)
 
@@ -60,30 +62,24 @@ def plot_ds(position, param, dataset, y_pred):
 
     # Add the training data
     position.scatter(
-        ts_to_date(X_train),
+        X_train,
         y_train,
         alpha=0.1,
         label="Training",
     )
 
     # Add the test data
-    position.scatter(ts_to_date(X_test), y_test, alpha=0.4, label="Test")
+    position.scatter(X_test, y_test, alpha=0.4, label="Test")
 
     # Add the predictions
-    position.scatter(ts_to_date(X_test), y_pred, alpha=0.4, label="Predictions")
+    position.scatter(X_test, y_pred, alpha=0.4, label="Predictions")
 
     position.set(
-        xlabel="Date",
+        xlabel="Days in the Year",
         ylabel=param,
     )
 
     position.legend()
-
-
-def ts_to_date(X: list):
-    ts_list = X[:, 0]
-
-    return [datetime.fromtimestamp(ts) for ts in ts_list]
 
 
 # Models
@@ -95,12 +91,19 @@ def make_temperature_model(df, position):
     X_train, X_test, y_train, y_test = t
 
     # Build & fit the model
-    model = RandomForestRegressor()
+    model = RandomForestRegressor(
+        n_estimators=512,
+        max_depth=10,
+        max_features="auto",
+        min_samples_split=64,
+        random_state=0,
+    )
+
     model.fit(X_train, y_train)
 
     plot_ds(
         position,
-        "Température (K)",
+        "Temperature (K)",
         dataset=t,
         y_pred=model.predict(X_test),
     )
@@ -118,7 +121,7 @@ def make_humidity_model(df, position):
 
     plot_ds(
         position,
-        "Humidité (%)",
+        "Humidity (%)",
         dataset=h,
         y_pred=model.predict(X_test),
     )
@@ -141,7 +144,7 @@ def make_wind_direction_model(df, position):
 
     plot_ds(
         position,
-        "Direction du vent moyen 10 mn (degré)",
+        "Average wind direction 10 min (degré)",
         dataset=wd,
         y_pred=model.predict(X_test),
     )
@@ -159,8 +162,26 @@ def make_wind_speed_model(df, position):
 
     plot_ds(
         position,
-        "Vitesse du vent moyen 10 mn (m/s)",
+        "Average wind speed 10 min (m/s)",
         dataset=ws,
+        y_pred=model.predict(X_test),
+    )
+
+    return model.score(X_test, y_test) * 100
+
+
+def make_precipitations_model(df, position):
+    p = load_ds(df, "rr24")
+    X_train, X_test, y_train, y_test = p
+
+    # Build & fit the model
+    model = RandomForestRegressor()
+    model.fit(X_train, y_train)
+
+    plot_ds(
+        position,
+        "Precipitation in the last 24 hours (mm)",
+        dataset=p,
         y_pred=model.predict(X_test),
     )
 
@@ -177,7 +198,7 @@ def make_atmospheric_pressure_model(df, position):
 
     plot_ds(
         position,
-        "Pression station (Pa)",
+        "Atmospheric pressure (Pa)",
         dataset=p,
         y_pred=model.predict(X_test),
     )
@@ -188,17 +209,17 @@ def make_atmospheric_pressure_model(df, position):
 def main():
     # Load the whole data from the CSV files
     print("⚙️  Load the data...")
-    # df = load_df(station_id=7630)
-    df = load_df(station_id=7460)
+    df = load_df(station_id=7630)
 
     # Create the main figure
-    _, axis = pyplot.subplots(5, figsize=(18, 28))
+    _, axis = pyplot.subplots(6, figsize=(18, 32))
 
     print(f"Temperature: {make_temperature_model(df, axis[0])}%")
-    print(f"Humidity: {make_humidity_model(df, axis[1])}%")
-    print(f"Wind direction: {make_wind_direction_model(df, axis[2])}%")
-    print(f"Wind speed: {make_wind_speed_model(df, axis[3])}%")
-    print(f"Atmospheric pressure: {make_atmospheric_pressure_model(df, axis[4])}%")
+    # print(f"Humidity: {make_humidity_model(df, axis[1])}%")
+    # print(f"Wind direction: {make_wind_direction_model(df, axis[2])}%")
+    # print(f"Wind speed: {make_wind_speed_model(df, axis[3])}%")
+    # print(f"Precipitations: {make_precipitations_model(df, axis[4])}%")
+    # print(f"Atmospheric pressure: {make_atmospheric_pressure_model(df, axis[5])}%")
 
     pyplot.tight_layout()
     pyplot.savefig(f"data/dataset.png")
