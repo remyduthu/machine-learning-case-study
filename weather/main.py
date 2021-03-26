@@ -5,10 +5,12 @@ from matplotlib import pyplot
 from numpy import array
 from os import getcwd, listdir
 from pandas import concat, read_csv, to_datetime
+from sklearn.decomposition import PCA
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import mean_squared_error
 from sklearn.model_selection import train_test_split
+from sklearn.neighbors import KNeighborsRegressor, RadiusNeighborsRegressor
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import PolynomialFeatures, StandardScaler
 
@@ -124,7 +126,7 @@ def make_temperature_model(df, position):
 
     # Build & fit the model
     model = make_pipeline(
-        PolynomialFeatures(degree=6),
+        PolynomialFeatures(6),
         StandardScaler(),
         LinearRegression(),
     )
@@ -149,14 +151,9 @@ def make_humidity_model(df, position):
 
     # Build & fit the model
     model = make_pipeline(
+        PCA(),
         StandardScaler(),
-        RandomForestRegressor(
-            max_depth=6,
-            max_features="auto",
-            min_samples_split=128,
-            n_estimators=128,
-            random_state=0,
-        ),
+        KNeighborsRegressor(n_neighbors=80),
     )
 
     model.fit(X_train, y_train)
@@ -173,27 +170,27 @@ def make_humidity_model(df, position):
     return model, ds, y_pred
 
 
-def make_wind_direction_model(df, position):
+# TODO: Finish the wind predictions
+def make_wind_direction_model(df, fig):
     ds = load_ds(df, "dd")
-    X_train, X_test, y_train, _ = ds
+    X_train, X_test, y_train, y_test = ds
 
     # Build & fit the model
-    model = make_pipeline(
-        PolynomialFeatures(degree=4),
-        StandardScaler(),
-        LinearRegression(),
-    )
+    model = RandomForestRegressor(max_depth=10)
 
     model.fit(X_train, y_train)
 
     y_pred = model.predict(X_test)
 
-    plot_ds(
-        position,
-        "Average wind direction 10 min (degré)",
-        dataset=ds,
-        y_pred=y_pred,
+    pyplot.polar(
+        y_train,
+        X_train,
+        "o",
+        alpha=0.1,
+        label="Training",
     )
+    pyplot.polar(y_test, X_test, "o", alpha=0.4, label="Test")
+    pyplot.polar(y_pred, X_test, "o", alpha=0.8, label="Predictions")
 
     return model, ds, y_pred
 
@@ -204,14 +201,9 @@ def make_wind_speed_model(df, position):
 
     # Build & fit the model
     model = make_pipeline(
+        PCA(whiten=True),
         StandardScaler(),
-        RandomForestRegressor(
-            max_features="auto",
-            max_depth=10,
-            min_samples_split=32,
-            n_estimators=512,
-            random_state=0,
-        ),
+        RadiusNeighborsRegressor(radius=0.02),
     )
 
     model.fit(X_train, y_train)
@@ -233,7 +225,11 @@ def make_precipitations_model(df, position):
     X_train, X_test, y_train, _ = ds
 
     # Build & fit the model
-    model = RandomForestRegressor()
+    model = make_pipeline(
+        PCA(whiten=True),
+        StandardScaler(),
+        KNeighborsRegressor(n_neighbors=128),
+    )
     model.fit(X_train, y_train)
 
     y_pred = model.predict(X_test)
@@ -253,7 +249,11 @@ def make_atmospheric_pressure_model(df, position):
     X_train, X_test, y_train, _ = ds
 
     # Build & fit the model
-    model = RandomForestRegressor()
+    model = make_pipeline(
+        PCA(whiten=True),
+        StandardScaler(),
+        RadiusNeighborsRegressor(radius=0.014),
+    )
     model.fit(X_train, y_train)
 
     y_pred = model.predict(X_test)
@@ -271,36 +271,28 @@ def make_atmospheric_pressure_model(df, position):
 def main():
     # Load the whole data from the CSV files
     print("⚙️  Load the data...")
-    df = load_df(stations=[7558, 7643])
+    df = load_df(stations=[7558])
 
     # Create the main figure
-    _, axis = pyplot.subplots(6, figsize=(18, 32))
+    _, axis = pyplot.subplots(4, figsize=(18, 24))
 
     # Build & fit the models
     print(f"🚧 Building the models (this may take some time)...")
     t, t_ds, t_pred = make_temperature_model(df, axis[0])
     h, h_ds, h_pred = make_humidity_model(df, axis[1])
-    wd, wd_ds, wd_pred = make_wind_direction_model(df, axis[2])
-    ws, ws_ds, ws_pred = make_wind_speed_model(df, axis[3])
-    p, p_ds, p_pred = make_precipitations_model(df, axis[4])
-    a, a_ds, a_pred = make_atmospheric_pressure_model(df, axis[5])
+    p, p_ds, p_pred = make_precipitations_model(df, axis[2])
+    a, a_ds, a_pred = make_atmospheric_pressure_model(df, axis[3])
 
-    print("1. Temperature (K)")
+    print("Temperature (K)")
     measure_performance(t, t_ds, t_pred)
 
-    print("2. Humidity (%)")
+    print("Humidity (%)")
     measure_performance(h, h_ds, h_pred)
 
-    print("3. Wind Direction (degree)")
-    measure_performance(wd, wd_ds, wd_pred)
-
-    print("4. Wind Speed (m/s)")
-    measure_performance(ws, ws_ds, ws_pred)
-
-    print("5. Precipitations (mm)")
+    print("Precipitations (mm)")
     measure_performance(p, p_ds, p_pred)
 
-    print("6. Atmospheric Pressure (Pa)")
+    print("Atmospheric Pressure (Pa)")
     measure_performance(a, a_ds, a_pred)
 
     pyplot.tight_layout()
