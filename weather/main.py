@@ -1,16 +1,14 @@
 #!/usr/bin/env python3
 
-from datetime import datetime
 from matplotlib import pyplot
 from os import getcwd, listdir
 from pandas import concat, read_csv, to_datetime
 from sklearn.ensemble import RandomForestRegressor
-from sklearn.linear_model import ElasticNet, LinearRegression
-from sklearn.model_selection import GridSearchCV, train_test_split
-from sklearn.neural_network import MLPRegressor
+from sklearn.linear_model import LinearRegression
+from sklearn.metrics import mean_squared_error
+from sklearn.model_selection import train_test_split
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import PolynomialFeatures, StandardScaler
-from sklearn.svm import SVR
 
 
 # Utilities
@@ -57,6 +55,14 @@ def load_ds(df, param: str):
     return train_test_split(X, y)
 
 
+def measure_performance(model, ds, y_pred):
+    _, X_test, _, y_test = ds
+
+    print(f"• R²: {model.score(X_test, y_test)}")
+    print(f"• RMSE: +/-{mean_squared_error(y_test, y_pred, squared=False)}")
+    print()
+
+
 def plot_ds(position, param, dataset, y_pred):
     X_train, X_test, y_train, y_test = dataset
 
@@ -87,33 +93,33 @@ def plot_ds(position, param, dataset, y_pred):
 
 def make_temperature_model(df, position):
     # Load the temperature dataset
-    t = load_ds(df, "t")
-    X_train, X_test, y_train, y_test = t
+    ds = load_ds(df, "t")
+    X_train, X_test, y_train, _ = ds
 
     # Build & fit the model
-    model = RandomForestRegressor(
-        n_estimators=512,
-        max_depth=10,
-        max_features="auto",
-        min_samples_split=64,
-        random_state=0,
+    model = make_pipeline(
+        PolynomialFeatures(degree=6),
+        StandardScaler(),
+        LinearRegression(),
     )
 
     model.fit(X_train, y_train)
 
+    y_pred = model.predict(X_test)
+
     plot_ds(
         position,
         "Temperature (K)",
-        dataset=t,
-        y_pred=model.predict(X_test),
+        dataset=ds,
+        y_pred=y_pred,
     )
 
-    return model.score(X_test, y_test) * 100
+    return model, ds, y_pred
 
 
 def make_humidity_model(df, position):
-    h = load_ds(df, "u")
-    X_train, X_test, y_train, y_test = h
+    ds = load_ds(df, "u")
+    X_train, X_test, y_train, _ = ds
 
     # Build & fit the model
     model = make_pipeline(
@@ -129,20 +135,21 @@ def make_humidity_model(df, position):
 
     model.fit(X_train, y_train)
 
+    y_pred = model.predict(X_test)
+
     plot_ds(
         position,
         "Humidity (%)",
-        dataset=h,
-        y_pred=model.predict(X_test),
+        dataset=ds,
+        y_pred=y_pred,
     )
 
-    return model.score(X_test, y_test) * 100
+    return model, ds, y_pred
 
 
-# TODO: Try to use another type of Regressor
 def make_wind_direction_model(df, position):
-    wd = load_ds(df, "dd")
-    X_train, X_test, y_train, y_test = wd
+    ds = load_ds(df, "dd")
+    X_train, X_test, y_train, _ = ds
 
     # Build & fit the model
     model = make_pipeline(
@@ -150,70 +157,89 @@ def make_wind_direction_model(df, position):
         StandardScaler(),
         LinearRegression(),
     )
+
     model.fit(X_train, y_train)
+
+    y_pred = model.predict(X_test)
 
     plot_ds(
         position,
         "Average wind direction 10 min (degré)",
-        dataset=wd,
-        y_pred=model.predict(X_test),
+        dataset=ds,
+        y_pred=y_pred,
     )
 
-    return model.score(X_test, y_test) * 100
+    return model, ds, y_pred
 
 
 def make_wind_speed_model(df, position):
-    ws = load_ds(df, "ff")
-    X_train, X_test, y_train, y_test = ws
+    ds = load_ds(df, "ff")
+    X_train, X_test, y_train, _ = ds
 
     # Build & fit the model
-    model = RandomForestRegressor()
+    model = make_pipeline(
+        StandardScaler(),
+        RandomForestRegressor(
+            max_features="auto",
+            max_depth=10,
+            min_samples_split=32,
+            n_estimators=512,
+            random_state=0,
+        ),
+    )
+
     model.fit(X_train, y_train)
+
+    y_pred = model.predict(X_test)
 
     plot_ds(
         position,
         "Average wind speed 10 min (m/s)",
-        dataset=ws,
-        y_pred=model.predict(X_test),
+        dataset=ds,
+        y_pred=y_pred,
     )
 
-    return model.score(X_test, y_test) * 100
+    return model, ds, y_pred
 
 
 def make_precipitations_model(df, position):
-    p = load_ds(df, "rr24")
-    X_train, X_test, y_train, y_test = p
+    ds = load_ds(df, "rr24")
+    X_train, X_test, y_train, _ = ds
 
     # Build & fit the model
     model = RandomForestRegressor()
     model.fit(X_train, y_train)
+
+    y_pred = model.predict(X_test)
 
     plot_ds(
         position,
         "Precipitation in the last 24 hours (mm)",
-        dataset=p,
-        y_pred=model.predict(X_test),
+        dataset=ds,
+        y_pred=y_pred,
     )
 
-    return model.score(X_test, y_test) * 100
+    return model, ds, y_pred
 
 
 def make_atmospheric_pressure_model(df, position):
-    p = load_ds(df, "pres")
-    X_train, X_test, y_train, y_test = p
+    ds = load_ds(df, "pres")
+    X_train, X_test, y_train, _ = ds
 
     # Build & fit the model
     model = RandomForestRegressor()
     model.fit(X_train, y_train)
 
+    y_pred = model.predict(X_test)
+
     plot_ds(
         position,
         "Atmospheric pressure (Pa)",
-        dataset=p,
-        y_pred=model.predict(X_test),
+        dataset=ds,
+        y_pred=y_pred,
     )
 
-    return model.score(X_test, y_test) * 100
+    return model, ds, y_pred
 
 
 def main():
@@ -224,15 +250,35 @@ def main():
     # Create the main figure
     _, axis = pyplot.subplots(6, figsize=(18, 32))
 
-    print(f"Temperature: {make_temperature_model(df, axis[0])}%")
-    print(f"Humidity: {make_humidity_model(df, axis[1])}%")
-    # print(f"Wind direction: {make_wind_direction_model(df, axis[2])}%")
-    # print(f"Wind speed: {make_wind_speed_model(df, axis[3])}%")
-    # print(f"Precipitations: {make_precipitations_model(df, axis[4])}%")
-    # print(f"Atmospheric pressure: {make_atmospheric_pressure_model(df, axis[5])}%")
+    # Build & fit the models
+    print(f"🚧 Building the models (this may take some time)...")
+    t, t_ds, t_pred = make_temperature_model(df, axis[0])
+    h, h_ds, h_pred = make_humidity_model(df, axis[1])
+    wd, wd_ds, wd_pred = make_wind_direction_model(df, axis[2])
+    ws, ws_ds, ws_pred = make_wind_speed_model(df, axis[3])
+    p, p_ds, p_pred = make_precipitations_model(df, axis[4])
+    a, a_ds, a_pred = make_atmospheric_pressure_model(df, axis[5])
+
+    print("1. Temperature (K)")
+    measure_performance(t, t_ds, t_pred)
+
+    print("2. Humidity (%)")
+    measure_performance(h, h_ds, h_pred)
+
+    print("3. Wind Direction (degree)")
+    measure_performance(wd, wd_ds, wd_pred)
+
+    print("4. Wind Speed (m/s)")
+    measure_performance(ws, ws_ds, ws_pred)
+
+    print("5. Precipitations (mm)")
+    measure_performance(p, p_ds, p_pred)
+
+    print("6. Atmospheric Pressure (Pa)")
+    measure_performance(a, a_ds, a_pred)
 
     pyplot.tight_layout()
-    pyplot.savefig(f"data/dataset.png")
+    pyplot.savefig(f"dist/dataset.png")
 
 
 if __name__ == "__main__":
