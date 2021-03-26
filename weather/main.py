@@ -116,7 +116,17 @@ def make_humidity_model(df, position):
     X_train, X_test, y_train, y_test = h
 
     # Build & fit the model
-    model = RandomForestRegressor()
+    model = make_pipeline(
+        StandardScaler(),
+        RandomForestRegressor(
+            max_depth=6,
+            max_features="auto",
+            min_samples_split=128,
+            n_estimators=128,
+            random_state=0,
+        ),
+    )
+
     model.fit(X_train, y_train)
 
     plot_ds(
@@ -215,7 +225,7 @@ def main():
     _, axis = pyplot.subplots(6, figsize=(18, 32))
 
     print(f"Temperature: {make_temperature_model(df, axis[0])}%")
-    # print(f"Humidity: {make_humidity_model(df, axis[1])}%")
+    print(f"Humidity: {make_humidity_model(df, axis[1])}%")
     # print(f"Wind direction: {make_wind_direction_model(df, axis[2])}%")
     # print(f"Wind speed: {make_wind_speed_model(df, axis[3])}%")
     # print(f"Precipitations: {make_precipitations_model(df, axis[4])}%")
