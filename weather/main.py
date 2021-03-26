@@ -20,7 +20,7 @@ def get_day_from_date(date: datetime):
     return array(date.timetuple().tm_yday).reshape(-1, 1)
 
 
-def load_df(station_id: int):
+def load_df(stations: list):
     # Read the data from the CSV files
     files = []
     for file in listdir(f"{getcwd()}/data/"):
@@ -36,7 +36,7 @@ def load_df(station_id: int):
     df = concat(files)
 
     # Filter based on the station ID
-    df.query(f"numer_sta == {station_id}", inplace=True)
+    df = df[df["numer_sta"].isin(stations)]
 
     # Convert the dates into Pandas Timestamps
     df.date = to_datetime(df.date, format="%Y%m%d%H%M%S")
@@ -271,7 +271,7 @@ def make_atmospheric_pressure_model(df, position):
 def main():
     # Load the whole data from the CSV files
     print("⚙️  Load the data...")
-    df = load_df(station_id=7630)
+    df = load_df(stations=[7558, 7643])
 
     # Create the main figure
     _, axis = pyplot.subplots(6, figsize=(18, 32))
