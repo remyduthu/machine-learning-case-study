@@ -5,6 +5,7 @@ from matplotlib import pyplot
 from numpy import array
 from os import getcwd, listdir
 from pandas import concat, read_csv, to_datetime
+from scipy.constants import convert_temperature
 from sklearn.decomposition import PCA
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.linear_model import LinearRegression
@@ -122,7 +123,11 @@ def plot_ds(position, param, dataset, y_pred):
 def make_temperature_model(df, position):
     # Load the temperature dataset
     ds = load_ds(df, "t")
-    X_train, X_test, y_train, _ = ds
+    X_train, X_test, y_train, y_test = ds
+
+    # Convert temperatures into Celsius degrees
+    y_train[:] = [convert_temperature(y, "Kelvin", "Celsius") for y in y_train]
+    y_test[:] = [convert_temperature(y, "Kelvin", "Celsius") for y in y_test]
 
     # Build & fit the model
     model = make_pipeline(
@@ -138,7 +143,7 @@ def make_temperature_model(df, position):
     plot_ds(
         position,
         "Temperature (K)",
-        dataset=ds,
+        dataset=(X_train, X_test, y_train, y_test),
         y_pred=y_pred,
     )
 

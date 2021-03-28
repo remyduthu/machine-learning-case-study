@@ -7,7 +7,8 @@ RUN pip3 install --no-cache-dir \
   matplotlib \
   numpy \
   pandas \
-  sklearn
+  scikit-learn \
+  scipy
 
 # We will use this image in interactive mode
 ENTRYPOINT ["/bin/bash"]
