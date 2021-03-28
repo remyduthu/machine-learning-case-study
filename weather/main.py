@@ -2,7 +2,7 @@
 
 from datetime import datetime, timedelta
 from matplotlib import pyplot
-from numpy import array
+from numpy import arange, array, ndindex, zeros
 from os import getcwd, listdir
 from pandas import concat, read_csv, to_datetime
 from scipy.constants import convert_temperature
@@ -14,9 +14,49 @@ from sklearn.model_selection import train_test_split
 from sklearn.neighbors import KNeighborsRegressor, RadiusNeighborsRegressor
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import PolynomialFeatures, StandardScaler
+from sklearn.tree import DecisionTreeClassifier
 
 
 # Utilities
+
+
+def create_wind_direction_matrix(X, y, ax):
+    # 4 seasons and 8 directions
+    M = zeros([8, 4])
+
+    for i, x in enumerate(X[:, 0]):
+        M[x, y[i]] += 1
+
+    ax.matshow(M, cmap=pyplot.cm.Blues)
+
+    for ix, iy in ndindex(M.shape):
+        m = M[ix, iy]
+        ax.text(iy, ix, str(m), ha="center", va="center")
+
+    # https://stackoverflow.com/a/65151948
+    ax.set_xticks(arange(4))
+    ax.set_xticklabels(["Winter", "Spring", "Summer", "Autumn"])
+
+    ax.set_yticks(arange(8))
+    ax.set_yticklabels(["N", "NE", "E", "SE", "S", "SW", "W", "NW"])
+
+
+def degree_to_direction(angle: int):
+    direction = int((angle / 45) + 0.5)
+
+    directions = [0, 1, 2, 3, 4, 5, 6, 7]
+
+    return directions[(direction % 8)]
+
+
+def day_to_season(day: int, n_days: int):
+    if day == 0:
+        day += 1
+
+    if day == n_days:
+        day -= 1
+
+    return int((day / n_days) * 4)
 
 
 def get_day_from_date(date: datetime):
@@ -87,11 +127,15 @@ def predict_by_date(model, date):
     print()
 
 
-def plot_ds(position, param, dataset, y_pred):
+def plot_regression(fig_name, param, dataset, y_pred):
     X_train, X_test, y_train, y_test = dataset
 
+    # Make sure everything is clear
+    pyplot.clf()
+    pyplot.figure(figsize=(18, 8))
+
     # Add the training data
-    position.scatter(
+    pyplot.scatter(
         X_train,
         y_train,
         alpha=0.1,
@@ -99,28 +143,28 @@ def plot_ds(position, param, dataset, y_pred):
     )
 
     # Add the test data
-    position.scatter(X_test, y_test, alpha=0.4, label="Test")
+    pyplot.scatter(X_test, y_test, alpha=0.4, label="Test")
 
     # Add the predictions
-    position.scatter(X_test, y_pred, alpha=0.4, label="Predictions")
+    pyplot.scatter(X_test, y_pred, alpha=0.4, label="Predictions")
 
     # Add dots for today
     today = get_day_from_date(datetime.now())
-    position.scatter(today, y_test[today], alpha=0.8, s=128, label="Today (y_test)")
-    position.scatter(today, y_pred[today], alpha=0.8, s=128, label="Today (y_pred)")
+    pyplot.scatter(today, y_test[today], alpha=0.8, s=128, label="Today (y_test)")
+    pyplot.scatter(today, y_pred[today], alpha=0.8, s=128, label="Today (y_pred)")
 
-    position.set(
-        xlabel="Days in the Year",
-        ylabel=param,
-    )
+    pyplot.xlabel.set_text = "Day of the Year"
+    pyplot.ylabel.set_text = param
 
-    position.legend()
+    pyplot.legend()
+
+    pyplot.savefig(f"dist/{fig_name}.png")
 
 
 # Models
 
 
-def make_temperature_model(df, position):
+def make_temperature_model(df):
     # Load the temperature dataset
     ds = load_ds(df, "t")
     X_train, X_test, y_train, y_test = ds
@@ -140,8 +184,8 @@ def make_temperature_model(df, position):
 
     y_pred = model.predict(X_test)
 
-    plot_ds(
-        position,
+    plot_regression(
+        "temperature",
         "Temperature (K)",
         dataset=(X_train, X_test, y_train, y_test),
         y_pred=y_pred,
@@ -150,7 +194,7 @@ def make_temperature_model(df, position):
     return model, ds, y_pred
 
 
-def make_humidity_model(df, position):
+def make_humidity_model(df):
     ds = load_ds(df, "u")
     X_train, X_test, y_train, _ = ds
 
@@ -165,8 +209,8 @@ def make_humidity_model(df, position):
 
     y_pred = model.predict(X_test)
 
-    plot_ds(
-        position,
+    plot_regression(
+        "humidity",
         "Humidity (%)",
         dataset=ds,
         y_pred=y_pred,
@@ -175,32 +219,63 @@ def make_humidity_model(df, position):
     return model, ds, y_pred
 
 
-# TODO: Finish the wind predictions
-def make_wind_direction_model(df, fig):
+def make_wind_direction_model(df):
     ds = load_ds(df, "dd")
-    X_train, X_test, y_train, y_test = ds
+
+    y_train, y_test, X_train, X_test = ds
+
+    X_train = X_train.astype(int)
+    X_test = X_test.astype(int)
+
+    # Convert angles into directions
+    X_train[:] = [degree_to_direction(x) for x in X_train]
+    X_test[:] = [degree_to_direction(x) for x in X_test]
+
+    # Rehape X
+    X_train = X_train.reshape(-1, 1)
+    X_test = X_test.reshape(-1, 1)
+
+    # Flatten y
+    y_train = y_train.ravel()
+    y_test = y_test.ravel()
+
+    # Convert days into seasons
+    y_train_max = max(y_train)
+    y_test_max = max(y_test)
+
+    y_train[:] = [day_to_season(y, y_train_max) for y in y_train[:]]
+    y_test[:] = [day_to_season(y, y_test_max) for y in y_test[:]]
 
     # Build & fit the model
-    model = RandomForestRegressor(max_depth=10)
+    model = make_pipeline(
+        StandardScaler(),
+        DecisionTreeClassifier(
+            max_depth=64,
+        ),
+    )
 
     model.fit(X_train, y_train)
 
     y_pred = model.predict(X_test)
 
-    pyplot.polar(
-        y_train,
-        X_train,
-        "o",
-        alpha=0.1,
-        label="Training",
-    )
-    pyplot.polar(y_test, X_test, "o", alpha=0.4, label="Test")
-    pyplot.polar(y_pred, X_test, "o", alpha=0.8, label="Predictions")
+    # Plot the results
+    _, (ax1, ax2, ax3) = pyplot.subplots(1, 3, sharey=True, figsize=(16, 8))
+
+    ax1.title.set_text("Training")
+    create_wind_direction_matrix(X_train, y_train, ax1)
+
+    ax2.title.set_text("Test")
+    create_wind_direction_matrix(X_test, y_test, ax2)
+
+    ax3.title.set_text("Predictions")
+    create_wind_direction_matrix(X_test, y_pred, ax3)
+
+    pyplot.savefig(f"dist/wind_direction.png")
 
     return model, ds, y_pred
 
 
-def make_wind_speed_model(df, position):
+def make_wind_speed_model(df):
     ds = load_ds(df, "ff")
     X_train, X_test, y_train, _ = ds
 
@@ -215,8 +290,8 @@ def make_wind_speed_model(df, position):
 
     y_pred = model.predict(X_test)
 
-    plot_ds(
-        position,
+    plot_regression(
+        "wind_speed",
         "Average wind speed 10 min (m/s)",
         dataset=ds,
         y_pred=y_pred,
@@ -225,7 +300,7 @@ def make_wind_speed_model(df, position):
     return model, ds, y_pred
 
 
-def make_precipitations_model(df, position):
+def make_precipitation_model(df):
     ds = load_ds(df, "rr24")
     X_train, X_test, y_train, _ = ds
 
@@ -239,8 +314,8 @@ def make_precipitations_model(df, position):
 
     y_pred = model.predict(X_test)
 
-    plot_ds(
-        position,
+    plot_regression(
+        "precipitation",
         "Precipitation in the last 24 hours (mm)",
         dataset=ds,
         y_pred=y_pred,
@@ -249,7 +324,7 @@ def make_precipitations_model(df, position):
     return model, ds, y_pred
 
 
-def make_atmospheric_pressure_model(df, position):
+def make_atmospheric_pressure_model(df):
     ds = load_ds(df, "pres")
     X_train, X_test, y_train, _ = ds
 
@@ -263,8 +338,8 @@ def make_atmospheric_pressure_model(df, position):
 
     y_pred = model.predict(X_test)
 
-    plot_ds(
-        position,
+    plot_regression(
+        "atmospheric_pressure",
         "Atmospheric pressure (Pa)",
         dataset=ds,
         y_pred=y_pred,
@@ -278,15 +353,14 @@ def main():
     print("⚙️  Load the data...")
     df = load_df(stations=[7558])
 
-    # Create the main figure
-    _, axis = pyplot.subplots(4, figsize=(18, 24))
-
     # Build & fit the models
     print(f"🚧 Building the models (this may take some time)...")
-    t, t_ds, t_pred = make_temperature_model(df, axis[0])
-    h, h_ds, h_pred = make_humidity_model(df, axis[1])
-    p, p_ds, p_pred = make_precipitations_model(df, axis[2])
-    a, a_ds, a_pred = make_atmospheric_pressure_model(df, axis[3])
+    t, t_ds, t_pred = make_temperature_model(df)
+    h, h_ds, h_pred = make_humidity_model(df)
+    wd, wd_ds, wd_pred = make_wind_direction_model(df)
+    ws, ws_ds, ws_pred = make_wind_speed_model(df)
+    p, p_ds, p_pred = make_precipitation_model(df)
+    a, a_ds, a_pred = make_atmospheric_pressure_model(df)
 
     print("Temperature (K)")
     measure_performance(t, t_ds, t_pred)
@@ -294,14 +368,17 @@ def main():
     print("Humidity (%)")
     measure_performance(h, h_ds, h_pred)
 
+    print("Wind Direction")
+    measure_performance(wd, wd_ds, wd_pred)
+
+    print("Wind Speed (m/s)")
+    measure_performance(ws, ws_ds, ws_pred)
+
     print("Precipitations (mm)")
     measure_performance(p, p_ds, p_pred)
 
     print("Atmospheric Pressure (Pa)")
     measure_performance(a, a_ds, a_pred)
-
-    pyplot.tight_layout()
-    pyplot.savefig(f"dist/dataset.png")
 
 
 if __name__ == "__main__":
