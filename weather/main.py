@@ -16,6 +16,7 @@ from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import PolynomialFeatures, StandardScaler
 from sklearn.tree import DecisionTreeClassifier
 
+from sklearn.svm import SVR
 
 # Utilities
 
@@ -186,7 +187,7 @@ def make_temperature_model(df):
 
     plot_regression(
         "temperature",
-        "Temperature (K)",
+        "Temperature (Celsius)",
         dataset=(X_train, X_test, y_train, y_test),
         y_pred=y_pred,
     )
@@ -362,7 +363,7 @@ def main():
     p, p_ds, p_pred = make_precipitation_model(df)
     a, a_ds, a_pred = make_atmospheric_pressure_model(df)
 
-    print("Temperature (K)")
+    print("Temperature (Celsius)")
     measure_performance(t, t_ds, t_pred)
 
     print("Humidity (%)")
